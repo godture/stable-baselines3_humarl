@@ -246,12 +246,27 @@ class HumarlActor(BasePolicy):
         self.use_expln = use_expln
         self.full_std = full_std
         self.clip_mean = clip_mean
+        self.ind_obses = [
+            list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43]
+                + list(range(55,95)) + list(range(115,125)) + list(range(145,155)) + list(range(165,175))
+                + list(range(191,215)) + list(range(227,233)) + list(range(245,251)) + list(range(257,263))
+                + list(range(275,281)) + [282,283,284,286,287,289,290]
+                + list(range(298,322)) + list(range(334,340)) + list(range(352,358)) + list(range(364,370)),
+            list(range(0,12)) + list(range(22,35)) + list(range(75,115)) + list(range(203,227)) + list(range(278,282)) + list(range(310,334)),
+            list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)) + list(range(75,85)) + list(range(115,145))
+                + list(range(203,209)) + list(range(227,245)) + list(range(282,286)) + list(range(310,316)) + list(range(334,352)),
+            list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41] + list(range(55,65)) + list(range(145,165)) + list(range(191,197))
+                + list(range(245,257)) + [286,287,288] + list(range(298,304)) + list(range(352,364)),
+            list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44] + list(range(55,65)) + list(range(165,185)) + list(range(191,197))
+                + list(range(257,269)) + [289,290,291] + list(range(298,304)) + list(range(364,376)),
+        ]
 
         if sde_net_arch is not None:
             warnings.warn("sde_net_arch is deprecated and will be removed in SB3 v2.4.0.", DeprecationWarning)
 
         action_dims = [3, 4, 4, 3, 3]
-        latent_pi_nets = [create_mlp(features_dim, -1, net_arch, activation_fn) for _ in range(len(action_dims))]
+        obs_dims = [len(ind) for ind in self.ind_obses] # [204, 117, 117, 92, 92]
+        latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
         self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
         
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
@@ -290,7 +305,7 @@ class HumarlActor(BasePolicy):
             Mean, standard deviation and optional keyword arguments.
         """
         features = self.extract_features(obs)
-        latent_pis = [latent_pi(features) for latent_pi in self.latent_pis]
+        latent_pis = [latent_pi(features[:,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis,self.ind_obses)]
         mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
 
         if self.use_sde:
@@ -299,19 +314,19 @@ class HumarlActor(BasePolicy):
         log_std_list = [log_std(latent_pi) for log_std,latent_pi in zip(self.log_stds, latent_pis)]
         # Original Implementation to cap the standard deviation
         log_std_list = [th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX) for log_std in log_std_list]
-        return mean_actions_list, log_std_list, {}
 
-    def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        mean_actions_list, log_std_list, kwargs = self.get_action_dist_params(obs)
         mean_actions = th.cat(mean_actions_list, dim=1)
         log_std = th.cat(log_std_list, dim=1)
+
+        return mean_actions, log_std, {}
+
+    def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
+        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
         # Note: the action is squashed
         return self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs)
 
     def action_log_prob(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
-        mean_actions_list, log_std_list, kwargs = self.get_action_dist_params(obs)
-        mean_actions = th.cat(mean_actions_list, dim=1)
-        log_std = th.cat(log_std_list, dim=1)
+        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
         # return action and associated log prob
         return self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
 
