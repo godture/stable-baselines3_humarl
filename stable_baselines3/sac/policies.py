@@ -250,26 +250,18 @@ class HumarlActor(BasePolicy):
         if sde_net_arch is not None:
             warnings.warn("sde_net_arch is deprecated and will be removed in SB3 v2.4.0.", DeprecationWarning)
 
-        action_dim = get_action_dim(self.action_space)
-        latent_pi_net = create_mlp(features_dim, -1, net_arch, activation_fn)
-        self.latent_pi = nn.Sequential(*latent_pi_net)
+        action_dims = [3, 4, 4, 3, 3]
+        latent_pi_nets = [create_mlp(features_dim, -1, net_arch, activation_fn) for _ in range(len(action_dims))]
+        self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
+        
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
 
         if self.use_sde:
-            self.action_dist = StateDependentNoiseDistribution(
-                action_dim, full_std=full_std, use_expln=use_expln, learn_features=True, squash_output=True
-            )
-            self.mu, self.log_std = self.action_dist.proba_distribution_net(
-                latent_dim=last_layer_dim, latent_sde_dim=last_layer_dim, log_std_init=log_std_init
-            )
-            # Avoid numerical issues by limiting the mean of the Gaussian
-            # to be in [-clip_mean, clip_mean]
-            if clip_mean > 0.0:
-                self.mu = nn.Sequential(self.mu, nn.Hardtanh(min_val=-clip_mean, max_val=clip_mean))
+            assert False, "do not use sde in humarl"
         else:
-            self.action_dist = SquashedDiagGaussianDistribution(action_dim)
-            self.mu = nn.Linear(last_layer_dim, action_dim)
-            self.log_std = nn.Linear(last_layer_dim, action_dim)
+            self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
+            self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+            self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()
@@ -289,30 +281,6 @@ class HumarlActor(BasePolicy):
         )
         return data
 
-    def get_std(self) -> th.Tensor:
-        """
-        Retrieve the standard deviation of the action distribution.
-        Only useful when using gSDE.
-        It corresponds to ``th.exp(log_std)`` in the normal case,
-        but is slightly different when using ``expln`` function
-        (cf StateDependentNoiseDistribution doc).
-
-        :return:
-        """
-        msg = "get_std() is only available when using gSDE"
-        assert isinstance(self.action_dist, StateDependentNoiseDistribution), msg
-        return self.action_dist.get_std(self.log_std)
-
-    def reset_noise(self, batch_size: int = 1) -> None:
-        """
-        Sample new weights for the exploration matrix, when using gSDE.
-
-        :param batch_size:
-        """
-        msg = "reset_noise() is only available when using gSDE"
-        assert isinstance(self.action_dist, StateDependentNoiseDistribution), msg
-        self.action_dist.sample_weights(self.log_std, batch_size=batch_size)
-
     def get_action_dist_params(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]:
         """
         Get the parameters for the action distribution.
@@ -322,24 +290,28 @@ class HumarlActor(BasePolicy):
             Mean, standard deviation and optional keyword arguments.
         """
         features = self.extract_features(obs)
-        latent_pi = self.latent_pi(features)
-        mean_actions = self.mu(latent_pi)
+        latent_pis = [latent_pi(features) for latent_pi in self.latent_pis]
+        mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
 
         if self.use_sde:
-            return mean_actions, self.log_std, dict(latent_sde=latent_pi)
+            assert False, "do not use sde in humarl"
         # Unstructured exploration (Original implementation)
-        log_std = self.log_std(latent_pi)
+        log_std_list = [log_std(latent_pi) for log_std,latent_pi in zip(self.log_stds, latent_pis)]
         # Original Implementation to cap the standard deviation
-        log_std = th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
-        return mean_actions, log_std, {}
+        log_std_list = [th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX) for log_std in log_std_list]
+        return mean_actions_list, log_std_list, {}
 
     def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
-        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+        mean_actions_list, log_std_list, kwargs = self.get_action_dist_params(obs)
+        mean_actions = th.cat(mean_actions_list, dim=1)
+        log_std = th.cat(log_std_list, dim=1)
         # Note: the action is squashed
         return self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs)
 
     def action_log_prob(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
-        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+        mean_actions_list, log_std_list, kwargs = self.get_action_dist_params(obs)
+        mean_actions = th.cat(mean_actions_list, dim=1)
+        log_std = th.cat(log_std_list, dim=1)
         # return action and associated log prob
         return self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
 
