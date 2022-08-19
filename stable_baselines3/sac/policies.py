@@ -334,6 +334,156 @@ class HumarlActor(BasePolicy):
         return self(observation, deterministic)
 
 
+class WalkerActor(BasePolicy):
+    """
+    Actor network (policy) for multi-agent SAC on Walker2d env.
+
+    :param observation_space: Obervation space
+    :param action_space: Action space
+    :param net_arch: Network architecture
+    :param features_extractor: Network to extract features
+        (a CNN when using images, a nn.Flatten() layer otherwise)
+    :param features_dim: Number of features
+    :param activation_fn: Activation function
+    :param use_sde: Whether to use State Dependent Exploration or not
+    :param log_std_init: Initial value for the log standard deviation
+    :param full_std: Whether to use (n_features x n_actions) parameters
+        for the std instead of only (n_features,) when using gSDE.
+    :param sde_net_arch: Network architecture for extracting features
+        when using gSDE. If None, the latent features from the policy will be used.
+        Pass an empty list to use the states as features.
+    :param use_expln: Use ``expln()`` function instead of ``exp()`` when using gSDE to ensure
+        a positive standard deviation (cf paper). It allows to keep variance
+        above zero and prevent it from growing too fast. In practice, ``exp()`` is usually enough.
+    :param clip_mean: Clip the mean output when using gSDE to avoid numerical instability.
+    :param normalize_images: Whether to normalize images or not,
+         dividing by 255.0 (True by default)
+    """
+
+    def __init__(
+        self,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        net_arch: List[int],
+        features_extractor: nn.Module,
+        features_dim: int,
+        activation_fn: Type[nn.Module] = nn.ReLU,
+        use_sde: bool = False,
+        log_std_init: float = -3,
+        full_std: bool = True,
+        sde_net_arch: Optional[List[int]] = None,
+        use_expln: bool = False,
+        clip_mean: float = 2.0,
+        normalize_images: bool = True,
+    ):
+        super().__init__(
+            observation_space,
+            action_space,
+            features_extractor=features_extractor,
+            normalize_images=normalize_images,
+            squash_output=True,
+        )
+
+        # Save arguments to re-create object at loading
+        self.use_sde = use_sde
+        self.sde_features_extractor = None
+        self.net_arch = net_arch
+        self.features_dim = features_dim
+        self.activation_fn = activation_fn
+        self.log_std_init = log_std_init
+        self.sde_net_arch = sde_net_arch
+        self.use_expln = use_expln
+        self.full_std = full_std
+        self.clip_mean = clip_mean
+
+        if sde_net_arch is not None:
+            warnings.warn("sde_net_arch is deprecated and will be removed in SB3 v2.4.0.", DeprecationWarning)
+
+        self.ind_obses = [
+            [0,1,2,3,4,8,9,10,11,12,13],
+            [0,1,5,6,7,8,9,10,14,15,16]
+        ]
+        self.id_obs = th.eye(2,device=th.device("cuda"))
+        action_dims = [3, 3]
+        latent_pi_net = create_mlp(len(self.ind_obses[0]), -1, net_arch, activation_fn)
+        self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for _ in  self.ind_obses])
+
+        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
+        mu_net = nn.Linear(last_layer_dim, action_dims[0])
+        log_std_net = nn.Linear(last_layer_dim, action_dims[0])
+
+        if self.use_sde:
+            assert False, "do not use sde in humarl"
+        else:
+            self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
+            self.mus = nn.ModuleList([mu_net for _ in action_dims])
+            self.log_stds = nn.ModuleList([log_std_net for _ in action_dims])
+
+        d_latent_pi_net = create_mlp(len(self.ind_obses[0])+2, -1, net_arch, activation_fn)
+        self.d_latent_pis = nn.ModuleList([nn.Sequential(*d_latent_pi_net) for _ in  self.ind_obses])
+
+    def _get_constructor_parameters(self) -> Dict[str, Any]:
+        data = super()._get_constructor_parameters()
+
+        data.update(
+            dict(
+                net_arch=self.net_arch,
+                features_dim=self.features_dim,
+                activation_fn=self.activation_fn,
+                use_sde=self.use_sde,
+                log_std_init=self.log_std_init,
+                full_std=self.full_std,
+                use_expln=self.use_expln,
+                features_extractor=self.features_extractor,
+                clip_mean=self.clip_mean,
+            )
+        )
+        return data
+
+    def get_action_dist_params(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor, Dict[str, th.Tensor]]:
+        """
+        Get the parameters for the action distribution.
+
+        :param obs:
+        :return:
+            Mean, standard deviation and optional keyword arguments.
+        """
+        features = self.extract_features(obs)
+        if len(obs.shape) == 2:
+            id_pad = self.id_obs.repeat(obs.shape[0],1,1)
+        else:
+            id_pad = self.id_obs
+
+        latent_pis = [latent_pi(features[:,ind_obs]) + d_latent_pi(th.cat((features[:,ind_obs], id_pad[...,i,:]), dim=-1))
+            for latent_pi,ind_obs,d_latent_pi,i in zip(self.latent_pis,self.ind_obses,self.d_latent_pis,range(2))]
+        mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
+
+        if self.use_sde:
+            assert False, "do not use sde in humarl"
+        # Unstructured exploration (Original implementation)
+        log_std_list = [log_std(latent_pi) for log_std,latent_pi in zip(self.log_stds, latent_pis)]
+        # Original Implementation to cap the standard deviation
+        log_std_list = [th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX) for log_std in log_std_list]
+
+        mean_actions = th.cat(mean_actions_list, dim=1)
+        log_std = th.cat(log_std_list, dim=1)
+
+        return mean_actions, log_std, {}
+
+    def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
+        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+        # Note: the action is squashed
+        return self.action_dist.actions_from_params(mean_actions, log_std, deterministic=deterministic, **kwargs)
+
+    def action_log_prob(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+        mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
+        # return action and associated log prob
+        return self.action_dist.log_prob_from_params(mean_actions, log_std, **kwargs)
+
+    def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
+        return self(observation, deterministic)
+
+
 class SACPolicy(BasePolicy):
     """
     Policy class (with both actor and critic) for SAC.
@@ -734,4 +884,4 @@ class HumarlPolicy(SACPolicy):
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        return HumarlActor(**actor_kwargs).to(self.device)
+        return WalkerActor(**actor_kwargs).to(self.device)
