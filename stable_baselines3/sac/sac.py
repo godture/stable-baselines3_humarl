@@ -109,6 +109,8 @@ class SAC(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        local_obs: bool = False,
+        ps: bool = False,
     ):
 
         super().__init__(
@@ -146,6 +148,9 @@ class SAC(OffPolicyAlgorithm):
         self.ent_coef = ent_coef
         self.target_update_interval = target_update_interval
         self.ent_coef_optimizer = None
+
+        self.policy_kwargs["local_obs"] = local_obs
+        self.policy_kwargs["ps"] = ps
 
         if _init_setup_model:
             self._setup_model()

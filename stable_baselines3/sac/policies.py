@@ -375,6 +375,8 @@ class WalkerActor(BasePolicy):
         use_expln: bool = False,
         clip_mean: float = 2.0,
         normalize_images: bool = True,
+        local_obs: bool = False,
+        ps: bool = False,
     ):
         super().__init__(
             observation_space,
@@ -395,32 +397,47 @@ class WalkerActor(BasePolicy):
         self.use_expln = use_expln
         self.full_std = full_std
         self.clip_mean = clip_mean
+        self.local_obs = local_obs
+        self.ps = ps
 
         if sde_net_arch is not None:
             warnings.warn("sde_net_arch is deprecated and will be removed in SB3 v2.4.0.", DeprecationWarning)
-
-        self.ind_obses = [
-            [0,1,2,3,4,8,9,10,11,12,13],
-            [0,1,5,6,7,8,9,10,14,15,16]
-        ]
-        self.id_obs = th.eye(2,device=th.device("cuda"))
-        action_dims = [3, 3]
-        latent_pi_net = create_mlp(len(self.ind_obses[0]), -1, net_arch, activation_fn)
-        self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for _ in  self.ind_obses])
-
-        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
-        mu_net = nn.Linear(last_layer_dim, action_dims[0])
-        log_std_net = nn.Linear(last_layer_dim, action_dims[0])
-
         if self.use_sde:
             assert False, "do not use sde in humarl"
-        else:
-            self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
-            self.mus = nn.ModuleList([mu_net for _ in action_dims])
-            self.log_stds = nn.ModuleList([log_std_net for _ in action_dims])
 
-        d_latent_pi_net = create_mlp(len(self.ind_obses[0])+2, -1, net_arch, activation_fn)
-        self.d_latent_pis = nn.ModuleList([nn.Sequential(*d_latent_pi_net) for _ in  self.ind_obses])
+        action_dims = [3, 3]
+        self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
+        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
+
+        if self.local_obs:
+            self.ind_obses = [
+                [0,1,2,3,4,8,9,10,11,12,13],
+                [0,1,5,6,7,8,9,10,14,15,16]
+            ]
+            obs_dims = [len(ind) for ind in self.ind_obses] # [11,11]
+            if self.ps:
+                self.id_obs = th.eye(2,device=th.device("cuda"))
+
+                latent_pi_net = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
+                self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for _ in  self.ind_obses])
+
+                mu_net = nn.Linear(last_layer_dim, action_dims[0])
+                log_std_net = nn.Linear(last_layer_dim, action_dims[0])
+                
+                self.mus = nn.ModuleList([mu_net for _ in action_dims])
+                self.log_stds = nn.ModuleList([log_std_net for _ in action_dims])
+                d_latent_pi_net = create_mlp(obs_dims[0]+2, -1, net_arch, activation_fn)
+                self.d_latent_pis = nn.ModuleList([nn.Sequential(*d_latent_pi_net) for _ in  self.ind_obses])
+            else:
+                latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
+                self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
+                self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+                self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+        else:
+            latent_pi_nets = [create_mlp(features_dim, -1, net_arch, activation_fn) for _ in action_dims]
+            self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
+            self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+            self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()
@@ -449,24 +466,26 @@ class WalkerActor(BasePolicy):
             Mean, standard deviation and optional keyword arguments.
         """
         features = self.extract_features(obs)
-        if len(obs.shape) == 2:
-            id_pad = self.id_obs.repeat(obs.shape[0],1,1)
+
+        if self.local_obs:
+            if self.ps:
+                if len(obs.shape) == 2:
+                    id_pad = self.id_obs.repeat(obs.shape[0],1,1)
+                else:
+                    id_pad = self.id_obs
+                latent_pis = [latent_pi(features[:,ind_obs]) + d_latent_pi(th.cat((features[:,ind_obs], id_pad[...,i,:]), dim=-1))
+                    for latent_pi,ind_obs,d_latent_pi,i in zip(self.latent_pis,self.ind_obses,self.d_latent_pis,range(2))]
+            else:
+                latent_pis = [latent_pi(features[:,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis,self.ind_obses)]
         else:
-            id_pad = self.id_obs
+            latent_pis = [latent_pi(features) for latent_pi in self.latent_pis]
 
-        latent_pis = [latent_pi(features[:,ind_obs]) + d_latent_pi(th.cat((features[:,ind_obs], id_pad[...,i,:]), dim=-1))
-            for latent_pi,ind_obs,d_latent_pi,i in zip(self.latent_pis,self.ind_obses,self.d_latent_pis,range(2))]
         mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
-
-        if self.use_sde:
-            assert False, "do not use sde in humarl"
-        # Unstructured exploration (Original implementation)
         log_std_list = [log_std(latent_pi) for log_std,latent_pi in zip(self.log_stds, latent_pis)]
-        # Original Implementation to cap the standard deviation
-        log_std_list = [th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX) for log_std in log_std_list]
 
         mean_actions = th.cat(mean_actions_list, dim=1)
         log_std = th.cat(log_std_list, dim=1)
+        log_std = th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
 
         return mean_actions, log_std, {}
 
@@ -861,7 +880,11 @@ class HumarlPolicy(SACPolicy):
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         n_critics: int = 2,
         share_features_extractor: bool = False,
+        local_obs: bool = False,
+        ps: bool = False,
     ):
+        self.local_obs = local_obs
+        self.ps = ps
         super().__init__(
             observation_space,
             action_space,
@@ -884,4 +907,4 @@ class HumarlPolicy(SACPolicy):
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        return WalkerActor(**actor_kwargs).to(self.device)
+        return WalkerActor(local_obs=self.local_obs, ps=self.ps, **actor_kwargs).to(self.device)
