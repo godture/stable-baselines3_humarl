@@ -907,4 +907,5 @@ class HumarlPolicy(SACPolicy):
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        return WalkerActor(local_obs=self.local_obs, ps=self.ps, **actor_kwargs).to(self.device)
+        return HumarlActor(**actor_kwargs).to(self.device)
+        # return WalkerActor(local_obs=self.local_obs, ps=self.ps, **actor_kwargs).to(self.device)
