@@ -242,8 +242,10 @@ class CheckpointCallback(BaseCallback):
         if self.n_calls % self.save_freq == 0:
             path = os.path.join(self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps")
             self.model.save(path)
+            path_buffer = os.path.join(self.save_path, f"buffer_{self.num_timesteps}_steps")
+            self.model.save_replay_buffer(path_buffer)
             if self.verbose > 1:
-                print(f"Saving model checkpoint to {path}")
+                print(f"Saving model + buffer checkpoint to {path} and {path_buffer}")
         return True
 
 
