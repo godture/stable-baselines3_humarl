@@ -1,0 +1,7 @@
+1. download mujoco210 into ~/.mujoco
+2. add /home/yan/.mujoco/mujoco210/bin/ to LD_LIBRARY_PATH
+3. for Slurm cluster error: 
+    /home/yan/miniconda3/envs/humarl/lib/python3.8/site-packages/mujoco_py/gl/eglshim.c:4:10: fatal error: GL/glew.h: No such file or directory
+    4 | #include <GL/glew.h>
+    --> copy folder /usr/include/GL into ~/miniconda3/envs/<envname>/include/
+        change "#include <GL/glew.h>" to "#include </home/yan/miniconda3/envs/humarl/include/GL/glew.h>"

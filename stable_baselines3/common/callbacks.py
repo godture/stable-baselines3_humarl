@@ -246,6 +246,9 @@ class CheckpointCallback(BaseCallback):
             self.model.save_replay_buffer(path_buffer)
             if self.verbose > 1:
                 print(f"Saving model + buffer checkpoint to {path} and {path_buffer}")
+            old_buffers = [file for file in os.listdir(self.save_path) if file.split("_")[-3]=='buffer' and int(file.split("_")[-2])<self.num_timesteps]
+            for buffer in old_buffers:
+                os.remove(os.path.join(self.save_path, buffer))
         return True
 
 

@@ -246,37 +246,47 @@ class HumarlActor(BasePolicy):
         self.use_expln = use_expln
         self.full_std = full_std
         self.clip_mean = clip_mean
-        self.ind_obses = [
-            list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43]
-                + list(range(55,95)) + list(range(115,125)) + list(range(145,155)) + list(range(165,175))
-                + list(range(191,215)) + list(range(227,233)) + list(range(245,251)) + list(range(257,263))
-                + list(range(275,281)) + [282,283,284,286,287,289,290]
-                + list(range(298,322)) + list(range(334,340)) + list(range(352,358)) + list(range(364,370)),
-            list(range(0,12)) + list(range(22,35)) + list(range(75,115)) + list(range(203,227)) + list(range(278,282)) + list(range(310,334)),
-            list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)) + list(range(75,85)) + list(range(115,145))
-                + list(range(203,209)) + list(range(227,245)) + list(range(282,286)) + list(range(310,316)) + list(range(334,352)),
-            list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41] + list(range(55,65)) + list(range(145,165)) + list(range(191,197))
-                + list(range(245,257)) + [286,287,288] + list(range(298,304)) + list(range(352,364)),
-            list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44] + list(range(55,65)) + list(range(165,185)) + list(range(191,197))
-                + list(range(257,269)) + [289,290,291] + list(range(298,304)) + list(range(364,376)),
-        ]
-
         if sde_net_arch is not None:
             warnings.warn("sde_net_arch is deprecated and will be removed in SB3 v2.4.0.", DeprecationWarning)
-
+        if self.use_sde:
+            assert False, "do not use sde in humarl"
+        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
         action_dims = [3, 4, 4, 3, 3]
+        self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
+
+        # self.ind_obses = [
+        #     list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43]
+        #         + list(range(55,95)) + list(range(115,125)) + list(range(145,155)) + list(range(165,175))
+        #         + list(range(191,215)) + list(range(227,233)) + list(range(245,251)) + list(range(257,263))
+        #         + list(range(275,281)) + [282,283,284,286,287,289,290]
+        #         + list(range(298,322)) + list(range(334,340)) + list(range(352,358)) + list(range(364,370)),
+        #     list(range(0,12)) + list(range(22,35)) + list(range(75,115)) + list(range(203,227)) + list(range(278,282)) + list(range(310,334)),
+        #     list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)) + list(range(75,85)) + list(range(115,145))
+        #         + list(range(203,209)) + list(range(227,245)) + list(range(282,286)) + list(range(310,316)) + list(range(334,352)),
+        #     list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41] + list(range(55,65)) + list(range(145,165)) + list(range(191,197))
+        #         + list(range(245,257)) + [286,287,288] + list(range(298,304)) + list(range(352,364)),
+        #     list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44] + list(range(55,65)) + list(range(165,185)) + list(range(191,197))
+        #         + list(range(257,269)) + [289,290,291] + list(range(298,304)) + list(range(364,376)),
+        # ]
+        self.ind_obses = [
+            list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43],
+            list(range(0,12)) + list(range(22,35)),
+            list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)),
+            list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41],
+            list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44],
+        ]
+        
         obs_dims = [len(ind) for ind in self.ind_obses] # [204, 117, 117, 92, 92]
+        # latent_pi_torso = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
+        # latent_pi_leg = create_mlp(obs_dims[1], -1, net_arch, activation_fn)
+        # latent_pi_arm = create_mlp(obs_dims[3], -1, net_arch, activation_fn)
+        # latent_pi_nets = [latent_pi_torso, latent_pi_leg, latent_pi_leg, latent_pi_arm, latent_pi_arm]
         latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
         self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
         
-        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
-
-        if self.use_sde:
-            assert False, "do not use sde in humarl"
-        else:
-            self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
-            self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
-            self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+        # Try, different linear transformation with same latent representation for symmetrical limbs
+        self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+        self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()
@@ -907,5 +917,7 @@ class HumarlPolicy(SACPolicy):
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        return HumarlActor(**actor_kwargs).to(self.device)
-        # return WalkerActor(local_obs=self.local_obs, ps=self.ps, **actor_kwargs).to(self.device)
+        if self.observation_space.shape[0] == 376:
+            return HumarlActor(**actor_kwargs).to(self.device)
+        elif self.observation_space.shape[0] == 17:
+            return WalkerActor(local_obs=self.local_obs, ps=self.ps, **actor_kwargs).to(self.device)
