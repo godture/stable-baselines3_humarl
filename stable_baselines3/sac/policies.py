@@ -310,10 +310,10 @@ class HumarlActor(BasePolicy):
         # log_std_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
 
         ### last layer ps=T
-        # mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
-        # mu_net_arm = nn.Linear(last_layer_dim, action_dims[3])
-        # log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
-        # log_std_net_arm = nn.Linear(last_layer_dim, action_dims[3])
+        # mu_net_leg = nn.Linear(last_layer_dim_limb, action_dims[1])
+        # mu_net_arm = nn.Linear(last_layer_dim_limb, action_dims[3])
+        # log_std_net_leg = nn.Linear(last_layer_dim_limb, action_dims[1])
+        # log_std_net_arm = nn.Linear(last_layer_dim_limb, action_dims[3])
         # mu_nets = [nn.Linear(last_layer_dim, action_dims[0]), mu_net_leg, mu_net_leg, mu_net_arm, mu_net_arm]
         # log_std_nets = [nn.Linear(last_layer_dim, action_dims[0]), log_std_net_leg, log_std_net_leg, log_std_net_arm, log_std_net_arm]
         
