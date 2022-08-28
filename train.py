@@ -5,9 +5,9 @@ env = gym.make("Humanoid-v3")
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
 
-dir_log = "log/humanoid/single/"
-name_run = '0003'
-net_arch = [256, 256]
+dir_log = "log/humanoid/multi/"
+name_run = '0008'
+net_arch = [150, 150]
 seed = 
 policy = "HumarlPolicy"
 

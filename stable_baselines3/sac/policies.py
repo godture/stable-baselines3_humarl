@@ -253,6 +253,7 @@ class HumarlActor(BasePolicy):
         if self.use_sde:
             assert False, "do not use sde in humarl"
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
+        last_layer_dim_limb = last_layer_dim
         action_dims = [3, 4, 4, 3, 3]
         self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
 
@@ -290,7 +291,7 @@ class HumarlActor(BasePolicy):
         ### id input layer
         # obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
         ### id latent layer
-        # last_layer_dim = net_arch[-1] + 2
+        # last_layer_dim_limb = net_arch[-1] + 2
         ### dynamic id input layer
         # obs_dims[1:] = [dim+1 for dim in obs_dims[1:]]
         
