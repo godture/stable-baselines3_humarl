@@ -22,6 +22,8 @@ from stable_baselines3.common.type_aliases import Schedule
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
+# limbs diff upper limit for dynamic id input
+UPPER_DIFF_LIMBS = 1.0
 
 class Actor(BasePolicy):
     """
@@ -267,26 +269,56 @@ class HumarlActor(BasePolicy):
         #         + list(range(245,257)) + [286,287,288] + list(range(298,304)) + list(range(352,364)),
         #     list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44] + list(range(55,65)) + list(range(165,185)) + list(range(191,197))
         #         + list(range(257,269)) + [289,290,291] + list(range(298,304)) + list(range(364,376)),
-        # ]
+        # ] # [204, 117, 117, 92, 92]
         self.ind_obses = [
             list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43],
             list(range(0,12)) + list(range(22,35)),
             list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)),
             list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41],
             list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44],
-        ]
+        ] # [37,25,25,23,23]
+
+        self.ind_inverse_obs = [[] for _ in self.ind_obses]
+        self.ind_inverse_act = [[] for _ in self.ind_obses]
+        ### projecting observation/action spaces of left leg/arm to those of right leg/arm
+        # self.ind_inverse_obs[2] = [2,4,5,7,8,9,13,15,17,18,20,21,22]
+        # self.ind_inverse_obs[4] = [2,4,5,7,9,12,14,16,17,19,21]
+        # self.ind_inverse_act[2] = [0,1]
+        # self.ind_inverse_act[4] = [1]
         
-        obs_dims = [len(ind) for ind in self.ind_obses] # [204, 117, 117, 92, 92]
-        # latent_pi_torso = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
-        # latent_pi_leg = create_mlp(obs_dims[1], -1, net_arch, activation_fn)
-        # latent_pi_arm = create_mlp(obs_dims[3], -1, net_arch, activation_fn)
-        # latent_pi_nets = [latent_pi_torso, latent_pi_leg, latent_pi_leg, latent_pi_arm, latent_pi_arm]
-        latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
+        obs_dims = [len(ind) for ind in self.ind_obses]
+        ### id input layer
+        # obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
+        ### id latent layer
+        # last_layer_dim = net_arch[-1] + 2
+        ### dynamic id input layer
+        # obs_dims[1:] = [dim+1 for dim in obs_dims[1:]]
+        
+
+        ### local obs, latent ps=F
+        # latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
+
+        ### local obs, latent ps=T
+        latent_pi_torso = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
+        latent_pi_leg = create_mlp(obs_dims[1], -1, net_arch, activation_fn)
+        latent_pi_arm = create_mlp(obs_dims[3], -1, net_arch, activation_fn)
+        latent_pi_nets = [latent_pi_torso, latent_pi_leg, latent_pi_leg, latent_pi_arm, latent_pi_arm]
+        
+        ### last layer ps=F
+        # mu_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
+        # log_std_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
+
+        ### last layer ps=T
+        # mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        # mu_net_arm = nn.Linear(last_layer_dim, action_dims[3])
+        # log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        # log_std_net_arm = nn.Linear(last_layer_dim, action_dims[3])
+        # mu_nets = [nn.Linear(last_layer_dim, action_dims[0]), mu_net_leg, mu_net_leg, mu_net_arm, mu_net_arm]
+        # log_std_nets = [nn.Linear(last_layer_dim, action_dims[0]), log_std_net_leg, log_std_net_leg, log_std_net_arm, log_std_net_arm]
+        
         self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
-        
-        # Try, different linear transformation with same latent representation for symmetrical limbs
-        self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
-        self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+        self.mus = nn.ModuleList(mu_nets)
+        self.log_stds = nn.ModuleList(log_std_nets)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()
@@ -315,8 +347,52 @@ class HumarlActor(BasePolicy):
             Mean, standard deviation and optional keyword arguments.
         """
         features = self.extract_features(obs)
-        latent_pis = [latent_pi(features[:,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis,self.ind_obses)]
-        mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
+        
+        latent_pis = []
+        ### dynamic id input layer
+        ## TODO, optimize the calculation of diff_limbs_obses by removing duplicate items in current calculation
+        # diff_limbs_obses = (features[..., self.ind_obses[1]]-features[..., self.ind_obses[2]]).norm(dim=-1)\
+        #     + (features[..., self.ind_obses[3]]-features[..., self.ind_obses[4]]).norm(dim=-1)
+        # diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = 1.0
+        # id_dynamic = (1.0 - diff_limbs_obses)[..., None]
+
+        for latent_pi,ind_obs,inverse_obs in zip(self.latent_pis, self.ind_obses, self.ind_inverse_obs):
+            input = features[..., ind_obs]
+            input[..., inverse_obs] *= -1
+            ### id input layer
+            # if ind_obs in [self.ind_obses[1], self.ind_obses[3]]:
+            #     rep_shape = list(input.shape)
+            #     rep_shape[-1] = 1
+            #     input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
+            # elif ind_obs in [self.ind_obses[2], self.ind_obses[4]]:
+            #     rep_shape = list(input.shape)
+            #     rep_shape[-1] = 1
+            #     input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
+
+            ### dynamic id input layer
+            # if ind_obs in [self.ind_obses[1], self.ind_obses[3]]:
+            #     input = th.cat((id_dynamic, input), dim=-1)
+            # elif ind_obs in [self.ind_obses[2], self.ind_obses[4]]:
+            #     input = th.cat((-id_dynamic, input), dim=-1)
+
+            latent = latent_pi(input)
+            ### id latent layer
+            # if ind_obs in [self.ind_obses[1], self.ind_obses[3]]:
+            #     rep_shape = list(latent.shape)
+            #     rep_shape[-1] = 1
+            #     latent = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), latent), dim=-1)
+            # elif ind_obs in [self.ind_obses[2], self.ind_obses[4]]:
+            #     rep_shape = list(latent.shape)
+            #     rep_shape[-1] = 1
+            #     latent = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), latent), dim=-1)
+
+            latent_pis.append(latent)
+
+        mean_actions_list = []
+        for latent_pi,mu,inverse_act in zip(latent_pis, self.mus, self.ind_inverse_act):
+            output_mu = mu(latent_pi)
+            output_mu[..., inverse_act] *= -1
+            mean_actions_list.append(output_mu)
 
         if self.use_sde:
             assert False, "do not use sde in humarl"
@@ -578,7 +654,7 @@ class SACPolicy(BasePolicy):
         if net_arch is None:
             net_arch = [256, 256]
 
-        actor_arch, critic_arch = get_actor_critic_arch(net_arch)
+        actor_arch, critic_arch = net_arch, [256, 256] # get_actor_critic_arch(net_arch)
 
         self.net_arch = net_arch
         self.activation_fn = activation_fn
