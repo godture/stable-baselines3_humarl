@@ -271,21 +271,35 @@ class HumarlActor(BasePolicy):
         #     list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44] + list(range(55,65)) + list(range(165,185)) + list(range(191,197))
         #         + list(range(257,269)) + [289,290,291] + list(range(298,304)) + list(range(364,376)),
         # ] # [204, 117, 117, 92, 92]
-        self.ind_obses = [
-            list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43],
-            list(range(0,12)) + list(range(22,35)),
-            list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)),
-            list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41],
-            list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44],
-        ] # [37,25,25,23,23]
+
+        ### truncated observation
+        ## local observation for body agents
+        # self.ind_obses = [
+        #     list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43],
+        #     list(range(0,12)) + list(range(22,35)),
+        #     list(range(0,8)) + list(range(12,16)) + list(range(22,31)) + list(range(35,39)),
+        #     list(range(0,8)) + [16,17,18] + list(range(22,31)) + [39,40,41],
+        #     list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44],
+        # ] # [37,25,25,23,23]
+        ## global observation for body agents
+        # self.ind_obses = [
+        #     list(range(45)) for _ in action_dims
+        # ] # [45,45,45,45,45]
 
         self.ind_inverse_obs = [[] for _ in self.ind_obses]
         self.ind_inverse_act = [[] for _ in self.ind_obses]
         ### projecting observation/action spaces of left leg/arm to those of right leg/arm
+        ## local obs
         # self.ind_inverse_obs[2] = [2,4,5,7,8,9,13,15,17,18,20,21,22]
         # self.ind_inverse_obs[4] = [2,4,5,7,9,12,14,16,17,19,21]
         # self.ind_inverse_act[2] = [0,1]
         # self.ind_inverse_act[4] = [1]
+        ## global obs
+        # self.ind_inverse_obs[2] = [2,4,5,7,8,9,12,13,17,20,23,25,27,28,30,31,32,35,36,40,43]
+        # self.ind_inverse_obs[4] = self.ind_inverse_obs[2]
+        # self.ind_inverse_act[2] = [0,1]
+        # self.ind_inverse_act[4] = [1]
+
         
         obs_dims = [len(ind) for ind in self.ind_obses]
         ### id input layer
@@ -357,32 +371,32 @@ class HumarlActor(BasePolicy):
         # diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = 1.0
         # id_dynamic = (1.0 - diff_limbs_obses)[..., None]
 
-        for latent_pi,ind_obs,inverse_obs in zip(self.latent_pis, self.ind_obses, self.ind_inverse_obs):
+        for latent_pi,ind_obs,inverse_obs,idx in zip(self.latent_pis, self.ind_obses, self.ind_inverse_obs, range(5)):
             input = features[..., ind_obs]
             input[..., inverse_obs] *= -1
             ### id input layer
-            # if ind_obs in [self.ind_obses[1], self.ind_obses[3]]:
+            # if idx in [1,3]:
             #     rep_shape = list(input.shape)
             #     rep_shape[-1] = 1
             #     input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
-            # elif ind_obs in [self.ind_obses[2], self.ind_obses[4]]:
+            # elif idx in [2,4]:
             #     rep_shape = list(input.shape)
             #     rep_shape[-1] = 1
             #     input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
 
             ### dynamic id input layer
-            # if ind_obs in [self.ind_obses[1], self.ind_obses[3]]:
+            # if idx in [1,3]:
             #     input = th.cat((id_dynamic, input), dim=-1)
-            # elif ind_obs in [self.ind_obses[2], self.ind_obses[4]]:
+            # elif idx in [2,4]:
             #     input = th.cat((-id_dynamic, input), dim=-1)
 
             latent = latent_pi(input)
             ### id latent layer
-            # if ind_obs in [self.ind_obses[1], self.ind_obses[3]]:
+            # if idx in [1,3]:
             #     rep_shape = list(latent.shape)
             #     rep_shape[-1] = 1
             #     latent = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), latent), dim=-1)
-            # elif ind_obs in [self.ind_obses[2], self.ind_obses[4]]:
+            # elif idx in [2,4]:
             #     rep_shape = list(latent.shape)
             #     rep_shape[-1] = 1
             #     latent = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), latent), dim=-1)
