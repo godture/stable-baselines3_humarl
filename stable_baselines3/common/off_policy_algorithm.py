@@ -582,6 +582,10 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self.num_timesteps += env.num_envs
             num_collected_steps += 1
 
+            # reset lazy agents' actors
+            if self.reset_lazy_freq and self.num_timesteps % self.reset_lazy_freq == 0:
+                self.actor.reset_lazy()
+
             # Give access to local variables
             callback.update_locals(locals())
             # Only stop training if return value is False, not when it is None.

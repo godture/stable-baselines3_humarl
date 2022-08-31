@@ -9,6 +9,7 @@ dir_log = "log/humanoid/multi/"
 name_run = '0008'
 net_arch = [150, 150]
 seed = 
+reset_lazy_freq = 
 policy = "HumarlPolicy"
 
 if os.path.isdir(os.path.join(dir_log, "checkpoint/", name_run)) and os.listdir(os.path.join(dir_log, "checkpoint/", name_run)):
@@ -20,7 +21,8 @@ if os.path.isdir(os.path.join(dir_log, "checkpoint/", name_run)) and os.listdir(
     model.load_replay_buffer(path_buffer)
 else:
     model = SAC(policy, env, verbose=1, learning_starts=10000,
-        seed=seed, policy_kwargs={"net_arch": net_arch}, tensorboard_log=os.path.join(dir_log, "tb/"))
+        seed=seed, policy_kwargs={"net_arch": net_arch}, tensorboard_log=os.path.join(dir_log, "tb/"),
+        reset_lazy_freq=reset_lazy_freq)
 
 checkpoint_callback = CheckpointCallback(save_freq=60000, save_path=os.path.join(dir_log, "checkpoint/", name_run), name_prefix='model')
 

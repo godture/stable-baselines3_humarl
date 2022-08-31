@@ -421,6 +421,15 @@ class HumarlActor(BasePolicy):
 
         return mean_actions, log_std, {}
 
+    def reset_lazy(self):
+        # reset actors for arms
+        self.latent_pis[3][0].reset_parameters()
+        self.latent_pis[3][2].reset_parameters()
+        self.mus[3].reset_parameters()
+        # self.mus[4].reset_parameters()
+        self.log_stds[3].reset_parameters()
+        # self.log_stds[4].reset_parameters()
+
     def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
         mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
         # Note: the action is squashed

@@ -111,6 +111,7 @@ class SAC(OffPolicyAlgorithm):
         _init_setup_model: bool = True,
         local_obs: bool = False,
         ps: bool = False,
+        reset_lazy_freq: int = None,
     ):
 
         super().__init__(
@@ -149,8 +150,10 @@ class SAC(OffPolicyAlgorithm):
         self.target_update_interval = target_update_interval
         self.ent_coef_optimizer = None
 
-        self.policy_kwargs["local_obs"] = local_obs
-        self.policy_kwargs["ps"] = ps
+        if policy == "HumarlPolicy":
+            self.policy_kwargs["local_obs"] = local_obs
+            self.policy_kwargs["ps"] = ps
+        self.reset_lazy_freq = reset_lazy_freq
 
         if _init_setup_model:
             self._setup_model()
