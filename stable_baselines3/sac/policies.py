@@ -287,18 +287,38 @@ class HumarlActor(BasePolicy):
         # ] # [45,45,45,45,45]
 
         self.ind_inverse_obs = [[] for _ in self.ind_obses]
+        self.ind_swap_to_obs = [[] for _ in self.ind_obses]
+        self.ind_swap_from_obs = [[] for _ in self.ind_obses]
         self.ind_inverse_act = [[] for _ in self.ind_obses]
         ### projecting observation/action spaces of left leg/arm to those of right leg/arm
         ## local obs
+        # TODO the local observation/action projection is wrong, to correct!!!
         # self.ind_inverse_obs[2] = [2,4,5,7,8,9,13,15,17,18,20,21,22]
         # self.ind_inverse_obs[4] = [2,4,5,7,9,12,14,16,17,19,21]
         # self.ind_inverse_act[2] = [0,1]
         # self.ind_inverse_act[4] = [1]
         ## global obs
-        # self.ind_inverse_obs[2] = [2,4,5,7,8,9,12,13,17,20,23,25,27,28,30,31,32,35,36,40,43]
+        # self.ind_inverse_obs[2] = [2,4,5,7,16,17,19,20,23,25,27,28,30,39,40,42,43]
+        # ind_right_leg = list(range(8,12))
+        # ind_right_leg_v = [i+23 for i in ind_right_leg]
+        # ind_left_leg = list(range(12,16))
+        # ind_left_leg_v = [i+23 for i in ind_left_leg]
+        # ind_right_upper_arm = [16,17]
+        # ind_right_upper_arm_v = [i+23 for i in ind_right_upper_arm]
+        # ind_right_elbow = [18,]
+        # ind_right_elbow_v = [i+23 for i in ind_right_elbow]
+        # ind_left_upper_arm = [19,20]
+        # ind_left_upper_arm_v = [i+23 for i in ind_left_upper_arm]
+        # ind_left_elbow = [21,]
+        # ind_left_elbow_v = [i+23 for i in ind_left_elbow]
+        # self.ind_swap_to_obs[2] = ind_right_leg + ind_left_leg + ind_right_upper_arm + ind_right_elbow + ind_left_upper_arm + ind_left_elbow \
+        #                         + ind_right_leg_v + ind_left_leg_v + ind_right_upper_arm_v + ind_right_elbow_v + ind_left_upper_arm_v + ind_left_elbow_v
+        # self.ind_swap_from_obs[2] = ind_left_leg + ind_right_leg + ind_left_upper_arm + ind_left_elbow + ind_right_upper_arm + ind_right_elbow \
+        #                         + ind_left_leg_v + ind_right_leg_v + ind_left_upper_arm_v + ind_left_elbow_v + ind_right_upper_arm_v + ind_right_elbow_v
         # self.ind_inverse_obs[4] = self.ind_inverse_obs[2]
-        # self.ind_inverse_act[2] = [0,1]
-        # self.ind_inverse_act[4] = [1]
+        # self.ind_swap_to_obs[4] = self.ind_swap_to_obs[2]
+        # self.ind_swap_from_obs[4] = self.ind_swap_from_obs[2]
+        # self.ind_inverse_act[4] = [0,1]
 
         
         obs_dims = [len(ind) for ind in self.ind_obses]
@@ -371,9 +391,11 @@ class HumarlActor(BasePolicy):
         # diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = 1.0
         # id_dynamic = (1.0 - diff_limbs_obses)[..., None]
 
-        for latent_pi,ind_obs,inverse_obs,idx in zip(self.latent_pis, self.ind_obses, self.ind_inverse_obs, range(5)):
+        for latent_pi,ind_obs,inverse_obs,idx,swap_to_obs,swap_from_obs in zip(self.latent_pis, self.ind_obses, self.ind_inverse_obs, range(5),
+                                                                                self.ind_swap_to_obs, self.ind_swap_from_obs):
             input = features[..., ind_obs]
             input[..., inverse_obs] *= -1
+            input[..., swap_to_obs] = input[..., swap_from_obs]
             ### id input layer
             # if idx in [1,3]:
             #     rep_shape = list(input.shape)

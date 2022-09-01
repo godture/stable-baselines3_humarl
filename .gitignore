@@ -34,6 +34,7 @@ keys/
 logs/
 log/
 model/
+tmp/
 
 .ipynb_checkpoints
 ghostdriver.log
