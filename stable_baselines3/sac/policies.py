@@ -283,9 +283,9 @@ class HumarlActor(BasePolicy):
         #     list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44],
         # ] # [37,25,25,23,23]
         ## global observation for body agents
-        # self.ind_obses = [
-        #     list(range(45)) for _ in action_dims
-        # ] # [45,45,45,45,45]
+        self.ind_obses = [
+            list(range(45)) for _ in action_dims
+        ] # [45,45,45,45,45]
 
         self.ind_inverse_obs = [[] for _ in self.ind_obses]
         self.ind_swap_to_obs = [[] for _ in self.ind_obses]
@@ -299,32 +299,32 @@ class HumarlActor(BasePolicy):
         # self.ind_inverse_act[2] = [0,1]
         # self.ind_inverse_act[4] = [1]
         ## global obs
-        # self.ind_inverse_obs[2] = [2,4,5,7,16,17,19,20,23,25,27,28,30,39,40,42,43]
-        # ind_right_leg = list(range(8,12))
-        # ind_right_leg_v = [i+23 for i in ind_right_leg]
-        # ind_left_leg = list(range(12,16))
-        # ind_left_leg_v = [i+23 for i in ind_left_leg]
-        # ind_right_upper_arm = [16,17]
-        # ind_right_upper_arm_v = [i+23 for i in ind_right_upper_arm]
-        # ind_right_elbow = [18,]
-        # ind_right_elbow_v = [i+23 for i in ind_right_elbow]
-        # ind_left_upper_arm = [19,20]
-        # ind_left_upper_arm_v = [i+23 for i in ind_left_upper_arm]
-        # ind_left_elbow = [21,]
-        # ind_left_elbow_v = [i+23 for i in ind_left_elbow]
-        # self.ind_swap_to_obs[2] = ind_right_leg + ind_left_leg + ind_right_upper_arm + ind_right_elbow + ind_left_upper_arm + ind_left_elbow \
-        #                         + ind_right_leg_v + ind_left_leg_v + ind_right_upper_arm_v + ind_right_elbow_v + ind_left_upper_arm_v + ind_left_elbow_v
-        # self.ind_swap_from_obs[2] = ind_left_leg + ind_right_leg + ind_left_upper_arm + ind_left_elbow + ind_right_upper_arm + ind_right_elbow \
-        #                         + ind_left_leg_v + ind_right_leg_v + ind_left_upper_arm_v + ind_left_elbow_v + ind_right_upper_arm_v + ind_right_elbow_v
-        # self.ind_inverse_obs[4] = self.ind_inverse_obs[2]
-        # self.ind_swap_to_obs[4] = self.ind_swap_to_obs[2]
-        # self.ind_swap_from_obs[4] = self.ind_swap_from_obs[2]
-        # self.ind_inverse_act[4] = [0,1]
+        self.ind_inverse_obs[2] = [2,4,5,7,16,17,19,20,23,25,27,28,30,39,40,42,43]
+        ind_right_leg = list(range(8,12))
+        ind_right_leg_v = [i+23 for i in ind_right_leg]
+        ind_left_leg = list(range(12,16))
+        ind_left_leg_v = [i+23 for i in ind_left_leg]
+        ind_right_upper_arm = [16,17]
+        ind_right_upper_arm_v = [i+23 for i in ind_right_upper_arm]
+        ind_right_elbow = [18,]
+        ind_right_elbow_v = [i+23 for i in ind_right_elbow]
+        ind_left_upper_arm = [19,20]
+        ind_left_upper_arm_v = [i+23 for i in ind_left_upper_arm]
+        ind_left_elbow = [21,]
+        ind_left_elbow_v = [i+23 for i in ind_left_elbow]
+        self.ind_swap_to_obs[2] = ind_right_leg + ind_left_leg + ind_right_upper_arm + ind_right_elbow + ind_left_upper_arm + ind_left_elbow \
+                                + ind_right_leg_v + ind_left_leg_v + ind_right_upper_arm_v + ind_right_elbow_v + ind_left_upper_arm_v + ind_left_elbow_v
+        self.ind_swap_from_obs[2] = ind_left_leg + ind_right_leg + ind_left_upper_arm + ind_left_elbow + ind_right_upper_arm + ind_right_elbow \
+                                + ind_left_leg_v + ind_right_leg_v + ind_left_upper_arm_v + ind_left_elbow_v + ind_right_upper_arm_v + ind_right_elbow_v
+        self.ind_inverse_obs[4] = self.ind_inverse_obs[2]
+        self.ind_swap_to_obs[4] = self.ind_swap_to_obs[2]
+        self.ind_swap_from_obs[4] = self.ind_swap_from_obs[2]
+        self.ind_inverse_act[4] = [0,1]
 
         
         obs_dims = [len(ind) for ind in self.ind_obses]
         ### id input layer
-        # obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
+        obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
         ### dynamic id input layer
         # obs_dims[1:] = [dim+1 for dim in obs_dims[1:]]
         
@@ -343,12 +343,12 @@ class HumarlActor(BasePolicy):
         # log_std_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
 
         ### last layer ps=T
-        # mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
-        # mu_net_arm = nn.Linear(last_layer_dim, action_dims[3])
-        # log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
-        # log_std_net_arm = nn.Linear(last_layer_dim, action_dims[3])
-        # mu_nets = [nn.Linear(last_layer_dim, action_dims[0]), mu_net_leg, mu_net_leg, mu_net_arm, mu_net_arm]
-        # log_std_nets = [nn.Linear(last_layer_dim, action_dims[0]), log_std_net_leg, log_std_net_leg, log_std_net_arm, log_std_net_arm]
+        mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        mu_net_arm = nn.Linear(last_layer_dim, action_dims[3])
+        log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        log_std_net_arm = nn.Linear(last_layer_dim, action_dims[3])
+        mu_nets = [nn.Linear(last_layer_dim, action_dims[0]), mu_net_leg, mu_net_leg, mu_net_arm, mu_net_arm]
+        log_std_nets = [nn.Linear(last_layer_dim, action_dims[0]), log_std_net_leg, log_std_net_leg, log_std_net_arm, log_std_net_arm]
         
         self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
         self.mus = nn.ModuleList(mu_nets)
@@ -396,14 +396,14 @@ class HumarlActor(BasePolicy):
             input[..., inverse_obs] *= -1
             input[..., swap_to_obs] = input[..., swap_from_obs]
             ### id input layer
-            # if idx in [1,3]:
-            #     rep_shape = list(input.shape)
-            #     rep_shape[-1] = 1
-            #     input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
-            # elif idx in [2,4]:
-            #     rep_shape = list(input.shape)
-            #     rep_shape[-1] = 1
-            #     input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
+            if idx in [1,3]:
+                rep_shape = list(input.shape)
+                rep_shape[-1] = 1
+                input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
+            elif idx in [2,4]:
+                rep_shape = list(input.shape)
+                rep_shape[-1] = 1
+                input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
 
             ### dynamic id input layer
             # if idx in [1,3]:
@@ -438,7 +438,7 @@ class HumarlActor(BasePolicy):
         models_init = copy.deepcopy(models_reset)
         for model_reset, model_init in zip(models_reset, models_init):
             model_init.reset_parameters()
-            polyak_update(model_init, model_reset, tau)
+            polyak_update(model_init.parameters(), model_reset.parameters(), tau)
 
         # # reset actors for arms
         # self.latent_pis[3][0].reset_parameters()
