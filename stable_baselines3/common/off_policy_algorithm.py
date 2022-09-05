@@ -584,7 +584,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
             # reset lazy agents' actors
             if self.reset_lazy_freq and self.num_timesteps % self.reset_lazy_freq == 0:
-                self.actor.reset_lazy()
+                tau_reset = self.reset_lazy_freq/self.num_timesteps
+                # tau_reset = (1./(np.exp(self.num_timesteps/self.reset_lazy_freq - 1.))) ** 1
+                self.actor.reset_lazy(tau_reset)
 
             # Give access to local variables
             callback.update_locals(locals())

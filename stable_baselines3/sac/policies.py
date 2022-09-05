@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type, Union
 import gym
 import torch as th
 from torch import nn
+import copy
 
 from stable_baselines3.common.distributions import SquashedDiagGaussianDistribution, StateDependentNoiseDistribution
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
@@ -17,6 +18,7 @@ from stable_baselines3.common.torch_layers import (
     get_actor_critic_arch,
 )
 from stable_baselines3.common.type_aliases import Schedule
+from stable_baselines3.common.utils import polyak_update
 
 # CAP the standard deviation of the actor
 LOG_STD_MAX = 2
@@ -443,14 +445,20 @@ class HumarlActor(BasePolicy):
 
         return mean_actions, log_std, {}
 
-    def reset_lazy(self):
-        # reset actors for arms
-        self.latent_pis[3][0].reset_parameters()
-        self.latent_pis[3][2].reset_parameters()
-        self.mus[3].reset_parameters()
-        # self.mus[4].reset_parameters()
-        self.log_stds[3].reset_parameters()
-        # self.log_stds[4].reset_parameters()
+    def reset_lazy(self, tau: float):
+        models_reset = [self.latent_pis[3][0], self.latent_pis[3][2], self.mus[3], self.log_stds[3]]
+        models_init = copy.deepcopy(models_reset)
+        for model_reset, model_init in zip(models_reset, models_init):
+            model_init.reset_parameters()
+            polyak_update(model_init, model_reset, tau)
+
+        # # reset actors for arms
+        # self.latent_pis[3][0].reset_parameters()
+        # self.latent_pis[3][2].reset_parameters()
+        # self.mus[3].reset_parameters()
+        # # self.mus[4].reset_parameters()
+        # self.log_stds[3].reset_parameters()
+        # # self.log_stds[4].reset_parameters()
 
     def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
         mean_actions, log_std, kwargs = self.get_action_dist_params(obs)
