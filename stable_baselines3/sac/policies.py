@@ -255,7 +255,6 @@ class HumarlActor(BasePolicy):
         if self.use_sde:
             assert False, "do not use sde in humarl"
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
-        last_layer_dim_limb = last_layer_dim
         action_dims = [3, 4, 4, 3, 3]
         self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
 
@@ -326,8 +325,6 @@ class HumarlActor(BasePolicy):
         obs_dims = [len(ind) for ind in self.ind_obses]
         ### id input layer
         # obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
-        ### id latent layer
-        # last_layer_dim_limb = net_arch[-1] + 2
         ### dynamic id input layer
         # obs_dims[1:] = [dim+1 for dim in obs_dims[1:]]
         
@@ -346,10 +343,10 @@ class HumarlActor(BasePolicy):
         # log_std_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
 
         ### last layer ps=T
-        # mu_net_leg = nn.Linear(last_layer_dim_limb, action_dims[1])
-        # mu_net_arm = nn.Linear(last_layer_dim_limb, action_dims[3])
-        # log_std_net_leg = nn.Linear(last_layer_dim_limb, action_dims[1])
-        # log_std_net_arm = nn.Linear(last_layer_dim_limb, action_dims[3])
+        # mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        # mu_net_arm = nn.Linear(last_layer_dim, action_dims[3])
+        # log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        # log_std_net_arm = nn.Linear(last_layer_dim, action_dims[3])
         # mu_nets = [nn.Linear(last_layer_dim, action_dims[0]), mu_net_leg, mu_net_leg, mu_net_arm, mu_net_arm]
         # log_std_nets = [nn.Linear(last_layer_dim, action_dims[0]), log_std_net_leg, log_std_net_leg, log_std_net_arm, log_std_net_arm]
         
@@ -415,15 +412,6 @@ class HumarlActor(BasePolicy):
             #     input = th.cat((-id_dynamic, input), dim=-1)
 
             latent = latent_pi(input)
-            ### id latent layer
-            # if idx in [1,3]:
-            #     rep_shape = list(latent.shape)
-            #     rep_shape[-1] = 1
-            #     latent = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), latent), dim=-1)
-            # elif idx in [2,4]:
-            #     rep_shape = list(latent.shape)
-            #     rep_shape[-1] = 1
-            #     latent = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), latent), dim=-1)
 
             latent_pis.append(latent)
 
@@ -515,8 +503,6 @@ class WalkerActor(BasePolicy):
         use_expln: bool = False,
         clip_mean: float = 2.0,
         normalize_images: bool = True,
-        local_obs: bool = False,
-        ps: bool = False,
     ):
         super().__init__(
             observation_space,
@@ -537,47 +523,47 @@ class WalkerActor(BasePolicy):
         self.use_expln = use_expln
         self.full_std = full_std
         self.clip_mean = clip_mean
-        self.local_obs = local_obs
-        self.ps = ps
-
         if sde_net_arch is not None:
             warnings.warn("sde_net_arch is deprecated and will be removed in SB3 v2.4.0.", DeprecationWarning)
         if self.use_sde:
             assert False, "do not use sde in humarl"
-
+        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
         action_dims = [3, 3]
         self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
-        last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
 
-        if self.local_obs:
-            self.ind_obses = [
-                [0,1,2,3,4,8,9,10,11,12,13],
-                [0,1,5,6,7,8,9,10,14,15,16]
-            ]
-            obs_dims = [len(ind) for ind in self.ind_obses] # [11,11]
-            if self.ps:
-                self.id_obs = th.eye(2,device=th.device("cuda"))
+        # global observation for body agents
+        self.ind_obses = [
+            list(range(17)),
+            [0,1,5,6,7,2,3,4,8,9,10,14,15,16,11,12,13]
+        ] # [17,17]
+        
+        obs_dims = [len(ind) for ind in self.ind_obses]
+        ### id input layer
+        # obs_dims = [dim+2 for dim in obs_dims]
+        ### dynamic id input layer
+        obs_dims = [dim+1 for dim in obs_dims]
+        
 
-                latent_pi_net = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
-                self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for _ in  self.ind_obses])
+        ### local obs, latent ps=F
+        # latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
 
-                mu_net = nn.Linear(last_layer_dim, action_dims[0])
-                log_std_net = nn.Linear(last_layer_dim, action_dims[0])
-                
-                self.mus = nn.ModuleList([mu_net for _ in action_dims])
-                self.log_stds = nn.ModuleList([log_std_net for _ in action_dims])
-                d_latent_pi_net = create_mlp(obs_dims[0]+2, -1, net_arch, activation_fn)
-                self.d_latent_pis = nn.ModuleList([nn.Sequential(*d_latent_pi_net) for _ in  self.ind_obses])
-            else:
-                latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
-                self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
-                self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
-                self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
-        else:
-            latent_pi_nets = [create_mlp(features_dim, -1, net_arch, activation_fn) for _ in action_dims]
-            self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
-            self.mus = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
-            self.log_stds = nn.ModuleList([nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims])
+        ### local obs, latent ps=T
+        latent_pi_leg = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
+        latent_pi_nets = [latent_pi_leg, latent_pi_leg]
+        
+        ### last layer ps=F
+        # mu_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
+        # log_std_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
+
+        ### last layer ps=T
+        mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
+        mu_nets = [mu_net_leg, mu_net_leg]
+        log_std_nets = [log_std_net_leg, log_std_net_leg]
+        
+        self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
+        self.mus = nn.ModuleList(mu_nets)
+        self.log_stds = nn.ModuleList(log_std_nets)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
         data = super()._get_constructor_parameters()
@@ -606,26 +592,47 @@ class WalkerActor(BasePolicy):
             Mean, standard deviation and optional keyword arguments.
         """
         features = self.extract_features(obs)
+        
+        latent_pis = []
+        ### dynamic id input layer
+        ## TODO, optimize the calculation of diff_limbs_obses by removing duplicate items in current calculation
+        diff_limbs_obses = (features[..., self.ind_obses[0]]-features[..., self.ind_obses[1]]).norm(dim=-1)
+        diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = 1.0
+        id_dynamic = (1.0 - diff_limbs_obses)[..., None]
 
-        if self.local_obs:
-            if self.ps:
-                if len(obs.shape) == 2:
-                    id_pad = self.id_obs.repeat(obs.shape[0],1,1)
-                else:
-                    id_pad = self.id_obs
-                latent_pis = [latent_pi(features[:,ind_obs]) + d_latent_pi(th.cat((features[:,ind_obs], id_pad[...,i,:]), dim=-1))
-                    for latent_pi,ind_obs,d_latent_pi,i in zip(self.latent_pis,self.ind_obses,self.d_latent_pis,range(2))]
-            else:
-                latent_pis = [latent_pi(features[:,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis,self.ind_obses)]
-        else:
-            latent_pis = [latent_pi(features) for latent_pi in self.latent_pis]
+        for latent_pi,ind_obs,idx in zip(self.latent_pis, self.ind_obses, range(2)):
+            input = features[..., ind_obs]
+            ### id input layer
+            # if idx == 0:
+            #     rep_shape = list(input.shape)
+            #     rep_shape[-1] = 1
+            #     input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
+            # elif idx == 1:
+            #     rep_shape = list(input.shape)
+            #     rep_shape[-1] = 1
+            #     input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
+
+            ### dynamic id input layer
+            if idx == 0:
+                input = th.cat((id_dynamic, input), dim=-1)
+            elif idx == 1:
+                input = th.cat((-id_dynamic, input), dim=-1)
+
+            latent = latent_pi(input)
+
+            latent_pis.append(latent)
 
         mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
+
+        if self.use_sde:
+            assert False, "do not use sde in humarl"
+        # Unstructured exploration (Original implementation)
         log_std_list = [log_std(latent_pi) for log_std,latent_pi in zip(self.log_stds, latent_pis)]
+        # Original Implementation to cap the standard deviation
+        log_std_list = [th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX) for log_std in log_std_list]
 
         mean_actions = th.cat(mean_actions_list, dim=1)
         log_std = th.cat(log_std_list, dim=1)
-        log_std = th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
 
         return mean_actions, log_std, {}
 
@@ -1050,4 +1057,4 @@ class HumarlPolicy(SACPolicy):
         if self.observation_space.shape[0] == 376:
             return HumarlActor(**actor_kwargs).to(self.device)
         elif self.observation_space.shape[0] == 17:
-            return WalkerActor(local_obs=self.local_obs, ps=self.ps, **actor_kwargs).to(self.device)
+            return WalkerActor(**actor_kwargs).to(self.device)

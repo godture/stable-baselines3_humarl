@@ -1,11 +1,11 @@
 import gym
 import os
-env = gym.make("Humanoid-v3")
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
 
-dir_log = "log/humanoid/multi/"
+env = gym.make("-v3")
+dir_log = "log//multi/"
 name_run = '0008'
 net_arch = [150, 150]
 seed = 
