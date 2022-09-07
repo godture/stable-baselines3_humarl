@@ -3,13 +3,16 @@ import os
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+from stable_baselines3.common.monitor import Monitor
 
-env = gym.make("-v3")
-dir_log = "log//multi/"
-name_run = '0008'
-net_arch = [150, 150]
+env = Monitor(gym.make("Walker2d-v3"))
+env = VecFrameStack(DummyVecEnv([lambda: env]), n_stack= )
+dir_log = "log/walker/multi/"
+name_run = 'test'
+net_arch = [256, 256]
 seed = 
-reset_lazy_freq = 
+reset_lazy_freq = None
 policy = "HumarlPolicy"
 
 if os.path.isdir(os.path.join(dir_log, "checkpoint/", name_run)) and os.listdir(os.path.join(dir_log, "checkpoint/", name_run)):

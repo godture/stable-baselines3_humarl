@@ -24,8 +24,10 @@ from stable_baselines3.common.utils import polyak_update
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
+# num of stacked observations
+NUM_STACK = 4
 # limbs diff upper limit for dynamic id input
-UPPER_DIFF_LIMBS = 1.0
+UPPER_DIFF_LIMBS = 1.0 * NUM_STACK**0.5
 
 class Actor(BasePolicy):
     """
@@ -532,16 +534,20 @@ class WalkerActor(BasePolicy):
         self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
 
         # global observation for body agents
+        obs_left = [0,1,5,6,7,2,3,4,8,9,10,14,15,16,11,12,13]
+        obs_left_stack = [[i+17*n for i in obs_left] for n in range(NUM_STACK)]
         self.ind_obses = [
-            list(range(17)),
-            [0,1,5,6,7,2,3,4,8,9,10,14,15,16,11,12,13]
-        ] # [17,17]
+            list(range(17*NUM_STACK)),
+            [element for sublist in obs_left_stack for element in sublist]
+        ] # [17*NUM_STACK,17*NUM_STACK]
         
         obs_dims = [len(ind) for ind in self.ind_obses]
         ### id input layer
         # obs_dims = [dim+2 for dim in obs_dims]
         ### dynamic id input layer
-        obs_dims = [dim+1 for dim in obs_dims]
+        # obs_dims = [dim+1 for dim in obs_dims]
+        ### id thigh forward
+        obs_dims = [dim+2 for dim in obs_dims]
         
 
         ### local obs, latent ps=F
@@ -594,33 +600,25 @@ class WalkerActor(BasePolicy):
         features = self.extract_features(obs)
         
         latent_pis = []
+
+        ### no id
+        # latent_pis = [latent_pi(features[...,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis, self.ind_obses)]
+        ### id input layer
+        # ids = th.eye(2, device=features.device)
+        # latent_pis = [latent_pi(th.cat((ids[th.ones_like(features[...,0],dtype=th.long)*ind], features[..., ind_obs]), dim=-1))
+        #                 for latent_pi,ind_obs,ind in zip(self.latent_pis, self.ind_obses, range(2))]
         ### dynamic id input layer
         ## TODO, optimize the calculation of diff_limbs_obses by removing duplicate items in current calculation
-        diff_limbs_obses = (features[..., self.ind_obses[0]]-features[..., self.ind_obses[1]]).norm(dim=-1)
-        diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = 1.0
-        id_dynamic = (1.0 - diff_limbs_obses)[..., None]
-
-        for latent_pi,ind_obs,idx in zip(self.latent_pis, self.ind_obses, range(2)):
-            input = features[..., ind_obs]
-            ### id input layer
-            # if idx == 0:
-            #     rep_shape = list(input.shape)
-            #     rep_shape[-1] = 1
-            #     input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
-            # elif idx == 1:
-            #     rep_shape = list(input.shape)
-            #     rep_shape[-1] = 1
-            #     input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
-
-            ### dynamic id input layer
-            if idx == 0:
-                input = th.cat((id_dynamic, input), dim=-1)
-            elif idx == 1:
-                input = th.cat((-id_dynamic, input), dim=-1)
-
-            latent = latent_pi(input)
-
-            latent_pis.append(latent)
+        # diff_limbs_obses = (features[..., self.ind_obses[0]]-features[..., self.ind_obses[1]]).norm(dim=-1)
+        # diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = UPPER_DIFF_LIMBS
+        # id_dynamic = (1.0 - diff_limbs_obses/UPPER_DIFF_LIMBS)[..., None]
+        # latent_pis = [latent_pi(th.cat((id_dynamic*sign, features[..., ind_obs]), dim=-1))
+        #                 for latent_pi,ind_obs,sign in zip(self.latent_pis, self.ind_obses, [1,-1])]
+        ### id thigh forward
+        ids = th.eye(2, device=features.device)
+        right_thigh_forward = (features[..., -6] - features[..., -3]) > 0
+        latent_pis = [self.latent_pis[0](th.cat((ids[right_thigh_forward.long()], features[..., self.ind_obses[0]]), dim=-1)),
+                        self.latent_pis[1](th.cat((ids[(~right_thigh_forward).long()], features[..., self.ind_obses[1]]), dim=-1))]
 
         mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
 
@@ -1054,7 +1052,7 @@ class HumarlPolicy(SACPolicy):
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        if self.observation_space.shape[0] == 376:
+        if self.observation_space.shape[0] == 376*NUM_STACK:
             return HumarlActor(**actor_kwargs).to(self.device)
-        elif self.observation_space.shape[0] == 17:
+        elif self.observation_space.shape[0] == 17*NUM_STACK:
             return WalkerActor(**actor_kwargs).to(self.device)
