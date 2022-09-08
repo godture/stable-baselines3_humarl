@@ -2,6 +2,7 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import gym
+import numpy as np
 
 from stable_baselines3.common.atari_wrappers import AtariWrapper
 from stable_baselines3.common.monitor import Monitor
@@ -154,3 +155,25 @@ def make_atari_env(
         vec_env_kwargs=vec_env_kwargs,
         monitor_kwargs=monitor_kwargs,
     )
+
+class HumanoidMirrorObsWrapper(gym.ObservationWrapper):
+    # generate symmetric joint observations for left/right limbs
+    # mirror torso and abdomen along y axis for left agent
+    def __init__(self, env: gym.Env) -> None:
+        super().__init__(env)
+        assert "Humanoid-v3" in str(env.env), "Should only be used to wrap Humanoid-v3."
+    
+    def observation(self, observation):
+        observation_new = np.concatenate([observation[:45], observation[:8]]) # 45+8
+        observation_new[[19,20,42,43,47,49,50,52]] = -observation[[19,20,42,43,2,4,5,7]]
+        return observation_new
+
+class HumanoidMirrorActWrapper(gym.ActionWrapper):
+    # reverse action for left shoulder
+    def __init__(self, env: gym.Env) -> None:
+        super().__init__(env)
+        assert "Humanoid-v3" in str(env.env), "Should only be used to wrap Humanoid-v3."
+    
+    def action(self, action):
+        action[[14,15]] = -action[[14,15]]
+        return action

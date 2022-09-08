@@ -5,7 +5,9 @@ from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.env_util import HumanoidMirrorActWrapper, HumanoidMirrorObsWrapper
 
+# env = Monitor(HumanoidMirrorObsWrapper(HumanoidMirrorActWrapper(gym.make("Humanoid-v3"))))
 env = Monitor(gym.make("Walker2d-v3"))
 env = VecFrameStack(DummyVecEnv([lambda: env]), n_stack= )
 dir_log = "log/walker/multi/"
