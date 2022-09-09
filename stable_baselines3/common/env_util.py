@@ -164,8 +164,8 @@ class HumanoidMirrorObsWrapper(gym.ObservationWrapper):
         assert "Humanoid-v3" in str(env.env), "Should only be used to wrap Humanoid-v3."
     
     def observation(self, observation):
-        observation_new = np.concatenate([observation[:45], observation[:8]]) # 45+8
-        observation_new[[19,20,42,43,47,49,50,52]] = -observation[[19,20,42,43,2,4,5,7]]
+        observation_new = np.concatenate([observation[:45], -observation[[2,4,5,7,23,25,27,28,30]]]) # 45+9
+        observation_new[[19,20,42,43]] = -observation[[19,20,42,43]]
         return observation_new
 
 class HumanoidMirrorActWrapper(gym.ActionWrapper):
