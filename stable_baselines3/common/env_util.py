@@ -162,6 +162,7 @@ class HumanoidMirrorObsWrapper(gym.ObservationWrapper):
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
         assert "Humanoid-v3" in str(env.env), "Should only be used to wrap Humanoid-v3."
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, (54,), np.float64)
     
     def observation(self, observation):
         observation_new = np.concatenate([observation[:45], -observation[[2,4,5,7,23,25,27,28,30]]]) # 45+9

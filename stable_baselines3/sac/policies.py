@@ -257,8 +257,8 @@ class HumarlActor(BasePolicy):
         if self.use_sde:
             assert False, "do not use sde in humarl"
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
-        action_dims = [3, 4, 4, 3, 3]
-        self.action_dist = SquashedDiagGaussianDistribution(sum(action_dims))
+        action_dims = [10,10] # torso-rightleg-rightarm, torso-leftleg-leftarm
+        self.action_dist = SquashedDiagGaussianDistribution(get_action_dim(self.action_space))
 
         # self.ind_obses = [
         #     list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43]
@@ -277,6 +277,7 @@ class HumarlActor(BasePolicy):
 
         ### truncated observation
         ## local observation for body agents
+        # TODO this is wrong with the (observation)wrapped humanoid env
         # self.ind_obses = [
         #     list(range(0,11)) + [12,13,14,16,17,19,20] + list(range(22,34)) + [35,36,37,39,40,42,43],
         #     list(range(0,12)) + list(range(22,35)),
@@ -285,72 +286,42 @@ class HumarlActor(BasePolicy):
         #     list(range(0,8)) + [19,20,21] + list(range(22,31)) + [42,43,44],
         # ] # [37,25,25,23,23]
         ## global observation for body agents
+        
+        obs_left = [0,1,45,3,46,47,6,48,12,13,14,15,8,9,10,11,19,20,21,16,17,18,
+                    22,49,24,50,26,51,52,29,53,35,36,37,38,31,32,33,34,42,43,44,39,40,41]
+        obs_left_stack = [[i+int(self.features_dim/NUM_STACK)*n for i in obs_left] for n in range(NUM_STACK)]
+        obs_right = list(range(len(obs_left)))
+        obs_right_stack = [[i+int(self.features_dim/NUM_STACK)*n for i in obs_right] for n in range(NUM_STACK)]
         self.ind_obses = [
-            list(range(45)) for _ in action_dims
-        ] # [45,45,45,45,45]
-
-        self.ind_inverse_obs = [[] for _ in self.ind_obses]
-        self.ind_swap_to_obs = [[] for _ in self.ind_obses]
-        self.ind_swap_from_obs = [[] for _ in self.ind_obses]
-        self.ind_inverse_act = [[] for _ in self.ind_obses]
-        ### projecting observation/action spaces of left leg/arm to those of right leg/arm
-        ## local obs
-        # TODO the local observation/action projection is wrong, to correct!!!
-        # self.ind_inverse_obs[2] = [2,4,5,7,8,9,13,15,17,18,20,21,22]
-        # self.ind_inverse_obs[4] = [2,4,5,7,9,12,14,16,17,19,21]
-        # self.ind_inverse_act[2] = [0,1]
-        # self.ind_inverse_act[4] = [1]
-        ## global obs
-        self.ind_inverse_obs[2] = [2,4,5,7,16,17,19,20,23,25,27,28,30,39,40,42,43]
-        ind_right_leg = list(range(8,12))
-        ind_right_leg_v = [i+23 for i in ind_right_leg]
-        ind_left_leg = list(range(12,16))
-        ind_left_leg_v = [i+23 for i in ind_left_leg]
-        ind_right_upper_arm = [16,17]
-        ind_right_upper_arm_v = [i+23 for i in ind_right_upper_arm]
-        ind_right_elbow = [18,]
-        ind_right_elbow_v = [i+23 for i in ind_right_elbow]
-        ind_left_upper_arm = [19,20]
-        ind_left_upper_arm_v = [i+23 for i in ind_left_upper_arm]
-        ind_left_elbow = [21,]
-        ind_left_elbow_v = [i+23 for i in ind_left_elbow]
-        self.ind_swap_to_obs[2] = ind_right_leg + ind_left_leg + ind_right_upper_arm + ind_right_elbow + ind_left_upper_arm + ind_left_elbow \
-                                + ind_right_leg_v + ind_left_leg_v + ind_right_upper_arm_v + ind_right_elbow_v + ind_left_upper_arm_v + ind_left_elbow_v
-        self.ind_swap_from_obs[2] = ind_left_leg + ind_right_leg + ind_left_upper_arm + ind_left_elbow + ind_right_upper_arm + ind_right_elbow \
-                                + ind_left_leg_v + ind_right_leg_v + ind_left_upper_arm_v + ind_left_elbow_v + ind_right_upper_arm_v + ind_right_elbow_v
-        self.ind_inverse_obs[4] = self.ind_inverse_obs[2]
-        self.ind_swap_to_obs[4] = self.ind_swap_to_obs[2]
-        self.ind_swap_from_obs[4] = self.ind_swap_from_obs[2]
-        self.ind_inverse_act[4] = [0,1]
-
+            [element for sublist in obs_right_stack for element in sublist],
+            [element for sublist in obs_left_stack for element in sublist]
+        ] # [45*NUM_STACK,45*NUM_STACK]
         
         obs_dims = [len(ind) for ind in self.ind_obses]
         ### id input layer
-        obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
+        # obs_dims[1:] = [dim+2 for dim in obs_dims[1:]]
         ### dynamic id input layer
         # obs_dims[1:] = [dim+1 for dim in obs_dims[1:]]
+        ### id thigh forward
+        # obs_dims = [dim+2 for dim in obs_dims]
         
 
         ### local obs, latent ps=F
         # latent_pi_nets = [create_mlp(obs_dim, -1, net_arch, activation_fn) for obs_dim in obs_dims]
 
         ### local obs, latent ps=T
-        latent_pi_torso = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
-        latent_pi_leg = create_mlp(obs_dims[1], -1, net_arch, activation_fn)
-        latent_pi_arm = create_mlp(obs_dims[3], -1, net_arch, activation_fn)
-        latent_pi_nets = [latent_pi_torso, latent_pi_leg, latent_pi_leg, latent_pi_arm, latent_pi_arm]
+        latent_pi_half = create_mlp(obs_dims[0], -1, net_arch, activation_fn)
+        latent_pi_nets = [latent_pi_half, latent_pi_half]
         
         ### last layer ps=F
         # mu_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
         # log_std_nets = [nn.Linear(last_layer_dim, action_dim) for action_dim in action_dims]
 
         ### last layer ps=T
-        mu_net_leg = nn.Linear(last_layer_dim, action_dims[1])
-        mu_net_arm = nn.Linear(last_layer_dim, action_dims[3])
-        log_std_net_leg = nn.Linear(last_layer_dim, action_dims[1])
-        log_std_net_arm = nn.Linear(last_layer_dim, action_dims[3])
-        mu_nets = [nn.Linear(last_layer_dim, action_dims[0]), mu_net_leg, mu_net_leg, mu_net_arm, mu_net_arm]
-        log_std_nets = [nn.Linear(last_layer_dim, action_dims[0]), log_std_net_leg, log_std_net_leg, log_std_net_arm, log_std_net_arm]
+        mu_net_half = nn.Linear(last_layer_dim, action_dims[0])
+        log_std_net_half = nn.Linear(last_layer_dim, action_dims[0])
+        mu_nets = [mu_net_half, mu_net_half]
+        log_std_nets = [log_std_net_half, log_std_net_half]
         
         self.latent_pis = nn.ModuleList([nn.Sequential(*latent_pi_net) for latent_pi_net in latent_pi_nets])
         self.mus = nn.ModuleList(mu_nets)
@@ -384,44 +355,26 @@ class HumarlActor(BasePolicy):
         """
         features = self.extract_features(obs)
         
-        latent_pis = []
+        ### no id
+        latent_pis = [latent_pi(features[...,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis, self.ind_obses)]
+        ### id input layer
+        # ids = th.eye(2, device=features.device)
+        # latent_pis = [latent_pi(th.cat((ids[th.ones_like(features[...,0],dtype=th.long)*ind], features[..., ind_obs]), dim=-1))
+        #                 for latent_pi,ind_obs,ind in zip(self.latent_pis, self.ind_obses, range(2))]
         ### dynamic id input layer
         ## TODO, optimize the calculation of diff_limbs_obses by removing duplicate items in current calculation
-        # diff_limbs_obses = (features[..., self.ind_obses[1]]-features[..., self.ind_obses[2]]).norm(dim=-1)\
-        #     + (features[..., self.ind_obses[3]]-features[..., self.ind_obses[4]]).norm(dim=-1)
-        # diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = 1.0
-        # id_dynamic = (1.0 - diff_limbs_obses)[..., None]
+        # diff_limbs_obses = (features[..., self.ind_obses[0]]-features[..., self.ind_obses[1]]).norm(dim=-1)
+        # diff_limbs_obses[diff_limbs_obses>UPPER_DIFF_LIMBS] = UPPER_DIFF_LIMBS
+        # id_dynamic = (1.0 - diff_limbs_obses/UPPER_DIFF_LIMBS)[..., None]
+        # latent_pis = [latent_pi(th.cat((id_dynamic*sign, features[..., ind_obs]), dim=-1))
+        #                 for latent_pi,ind_obs,sign in zip(self.latent_pis, self.ind_obses, [1,-1])]
+        ### id thigh forward
+        # ids = th.eye(2, device=features.device)
+        # right_thigh_forward = (features[..., -21] - features[..., -17]) > 0
+        # latent_pis = [self.latent_pis[0](th.cat((ids[right_thigh_forward.long()], features[..., self.ind_obses[0]]), dim=-1)),
+        #                 self.latent_pis[1](th.cat((ids[(~right_thigh_forward).long()], features[..., self.ind_obses[1]]), dim=-1))]
 
-        for latent_pi,ind_obs,inverse_obs,idx,swap_to_obs,swap_from_obs in zip(self.latent_pis, self.ind_obses, self.ind_inverse_obs, range(5),
-                                                                                self.ind_swap_to_obs, self.ind_swap_from_obs):
-            input = features[..., ind_obs]
-            input[..., inverse_obs] *= -1
-            input[..., swap_to_obs] = input[..., swap_from_obs]
-            ### id input layer
-            if idx in [1,3]:
-                rep_shape = list(input.shape)
-                rep_shape[-1] = 1
-                input = th.cat((th.tensor([1,0],device=obs.device).repeat(rep_shape), input), dim=-1)
-            elif idx in [2,4]:
-                rep_shape = list(input.shape)
-                rep_shape[-1] = 1
-                input = th.cat((th.tensor([0,1],device=obs.device).repeat(rep_shape), input), dim=-1)
-
-            ### dynamic id input layer
-            # if idx in [1,3]:
-            #     input = th.cat((id_dynamic, input), dim=-1)
-            # elif idx in [2,4]:
-            #     input = th.cat((-id_dynamic, input), dim=-1)
-
-            latent = latent_pi(input)
-
-            latent_pis.append(latent)
-
-        mean_actions_list = []
-        for latent_pi,mu,inverse_act in zip(latent_pis, self.mus, self.ind_inverse_act):
-            output_mu = mu(latent_pi)
-            output_mu[..., inverse_act] *= -1
-            mean_actions_list.append(output_mu)
+        mean_actions_list = [mu(latent_pi) for mu,latent_pi in zip(self.mus, latent_pis)]
 
         if self.use_sde:
             assert False, "do not use sde in humarl"
@@ -430,12 +383,15 @@ class HumarlActor(BasePolicy):
         # Original Implementation to cap the standard deviation
         log_std_list = [th.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX) for log_std in log_std_list]
 
-        mean_actions = th.cat(mean_actions_list, dim=1)
-        log_std = th.cat(log_std_list, dim=1)
+        mean_actions = th.cat([mean_actions_list[0][...,[0,1,2,3,4,5,6]], mean_actions_list[1][...,[3,4,5,6]],
+                                mean_actions_list[0][...,[7,8,9]], mean_actions_list[1][...,[7,8,9]]], dim=-1)
+        log_std = th.cat([log_std_list[0][...,[0,1,2,3,4,5,6]], log_std_list[1][...,[3,4,5,6]],
+                                log_std_list[0][...,[7,8,9]], log_std_list[1][...,[7,8,9]]], dim=-1)
 
         return mean_actions, log_std, {}
 
     def reset_lazy(self, tau: float):
+        # can be used when torso and arms are agents separated from legs
         models_reset = [self.latent_pis[3][0], self.latent_pis[3][2], self.mus[3], self.log_stds[3]]
         models_init = copy.deepcopy(models_reset)
         for model_reset, model_init in zip(models_reset, models_init):
@@ -535,9 +491,9 @@ class WalkerActor(BasePolicy):
 
         # global observation for body agents
         obs_left = [0,1,5,6,7,2,3,4,8,9,10,14,15,16,11,12,13]
-        obs_left_stack = [[i+17*n for i in obs_left] for n in range(NUM_STACK)]
+        obs_left_stack = [[i+int(self.features_dim/NUM_STACK)*n for i in obs_left] for n in range(NUM_STACK)]
         self.ind_obses = [
-            list(range(17*NUM_STACK)),
+            list(range(self.features_dim)),
             [element for sublist in obs_left_stack for element in sublist]
         ] # [17*NUM_STACK,17*NUM_STACK]
         
@@ -599,8 +555,6 @@ class WalkerActor(BasePolicy):
         """
         features = self.extract_features(obs)
         
-        latent_pis = []
-
         ### no id
         # latent_pis = [latent_pi(features[...,ind_obs]) for latent_pi,ind_obs in zip(self.latent_pis, self.ind_obses)]
         ### id input layer
@@ -1052,7 +1006,7 @@ class HumarlPolicy(SACPolicy):
 
     def make_actor(self, features_extractor: Optional[BaseFeaturesExtractor] = None) -> Actor:
         actor_kwargs = self._update_features_extractor(self.actor_kwargs, features_extractor)
-        if self.observation_space.shape[0] == 376*NUM_STACK:
+        if self.observation_space.shape[0] == 54*NUM_STACK:
             return HumarlActor(**actor_kwargs).to(self.device)
         elif self.observation_space.shape[0] == 17*NUM_STACK:
             return WalkerActor(**actor_kwargs).to(self.device)
